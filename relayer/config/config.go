@@ -1,4 +1,4 @@
-package relayerconf
+package config
 
 import (
 	"fmt"
