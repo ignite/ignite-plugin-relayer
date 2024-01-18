@@ -5,20 +5,18 @@ import (
 	"fmt"
 	"text/tabwriter"
 
+	"github.com/ignite/cli/v28/ignite/pkg/cliui"
+	"github.com/ignite/cli/v28/ignite/pkg/cosmosaccount"
+	"github.com/ignite/cli/v28/ignite/pkg/relayer"
 	"github.com/spf13/cobra"
-
-	"github.com/ignite/cli/ignite/pkg/cliui"
-	"github.com/ignite/cli/ignite/pkg/cosmosaccount"
-	"github.com/ignite/cli/ignite/pkg/relayer"
 )
 
-// NewRelayerConnect returns a new relayer connect command to link all or some relayer paths and start
-// relaying txs in between.
-// if not paths are specified, all paths are linked.
-func NewRelayerConnect() *cobra.Command {
+// NewTSConnect returns a new relayer connect command to link all or some relayer paths
+// and start relaying TXs in between. If not paths are specified, all paths are linked.
+func NewTSConnect() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "connect [<path>,...]",
-		Short: "Link chains associated with paths and start relaying tx packets in between",
+		Short: "Link chains associated with paths and start relaying TX packets in between",
 		RunE:  relayerConnectHandler,
 	}
 

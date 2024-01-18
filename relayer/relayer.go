@@ -12,14 +12,14 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	"github.com/ignite/cli/v28/ignite/pkg/cosmosaccount"
+	"github.com/ignite/cli/v28/ignite/pkg/cosmosclient"
+	"github.com/ignite/cli/v28/ignite/pkg/ctxticker"
+	tsrelayer "github.com/ignite/cli/v28/ignite/pkg/nodetime/programs/ts-relayer"
+	"github.com/ignite/cli/v28/ignite/pkg/xurl"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/ignite/cli/ignite/pkg/cosmosaccount"
-	"github.com/ignite/cli/ignite/pkg/cosmosclient"
-	"github.com/ignite/cli/ignite/pkg/ctxticker"
-	tsrelayer "github.com/ignite/cli/ignite/pkg/nodetime/programs/ts-relayer"
-	relayerconf "github.com/ignite/cli/ignite/pkg/relayer/config"
-	"github.com/ignite/cli/ignite/pkg/xurl"
+	"github.com/ignite/ignite-plugin-relayer/relayer/config"
 )
 
 const (
@@ -50,13 +50,13 @@ func (r Relayer) LinkPaths(
 	ctx context.Context,
 	pathIDs ...string,
 ) error {
-	conf, err := relayerconf.Get()
+	cfg, err := config.Get()
 	if err != nil {
 		return err
 	}
 
 	for _, id := range pathIDs {
-		conf, err = r.Link(ctx, conf, id)
+		cfg, err = r.Link(ctx, cfg, id)
 		if err != nil {
 			// Continue with next path when current one is already linked
 			if errors.Is(err, ErrLinkedPath) {
@@ -64,7 +64,7 @@ func (r Relayer) LinkPaths(
 			}
 			return err
 		}
-		if err := relayerconf.Save(conf); err != nil {
+		if err := config.Save(cfg); err != nil {
 			return err
 		}
 	}
@@ -74,42 +74,42 @@ func (r Relayer) LinkPaths(
 // Link links chain path to each other.
 func (r Relayer) Link(
 	ctx context.Context,
-	conf relayerconf.Config,
+	cfg config.Config,
 	pathID string,
-) (relayerconf.Config, error) {
-	path, err := conf.PathByID(pathID)
+) (config.Config, error) {
+	path, err := cfg.PathByID(pathID)
 	if err != nil {
-		return conf, err
+		return cfg, err
 	}
 
 	if path.Src.ChannelID != "" {
-		return conf, fmt.Errorf("%w: %s", ErrLinkedPath, path.ID)
+		return cfg, fmt.Errorf("%w: %s", ErrLinkedPath, path.ID)
 	}
 
-	if path, err = r.call(ctx, conf, path, "link"); err != nil {
-		return conf, err
+	if path, err = r.call(ctx, cfg, path, "link"); err != nil {
+		return cfg, err
 	}
 
-	return conf, conf.UpdatePath(path)
+	return cfg, cfg.UpdatePath(path)
 }
 
 // StartPaths relays packets for linked paths from config file until ctx is canceled.
 func (r Relayer) StartPaths(ctx context.Context, pathIDs ...string) error {
-	conf, err := relayerconf.Get()
+	cfg, err := config.Get()
 	if err != nil {
 		return err
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	var m sync.Mutex // protects relayerconf.Path.
+	var m sync.Mutex // protects config.Path.
 	for _, id := range pathIDs {
 		id := id
 		g.Go(func() error {
-			return r.Start(ctx, conf, id, func(path relayerconf.Config) error {
+			return r.Start(ctx, cfg, id, func(path config.Config) error {
 				m.Lock()
 				defer m.Unlock()
-				return relayerconf.Save(conf)
+				return config.Save(cfg)
 			})
 		})
 	}
@@ -119,24 +119,24 @@ func (r Relayer) StartPaths(ctx context.Context, pathIDs ...string) error {
 // Start relays packets for linked path until ctx is canceled.
 func (r Relayer) Start(
 	ctx context.Context,
-	conf relayerconf.Config,
+	cfg config.Config,
 	pathID string,
-	postExecute func(path relayerconf.Config) error,
+	postExecute func(path config.Config) error,
 ) error {
 	return ctxticker.DoNow(ctx, relayDuration, func() error {
-		path, err := conf.PathByID(pathID)
+		path, err := cfg.PathByID(pathID)
 		if err != nil {
 			return err
 		}
-		path, err = r.call(ctx, conf, path, "start")
+		path, err = r.call(ctx, cfg, path, "start")
 		if err != nil {
 			return err
 		}
-		if err := conf.UpdatePath(path); err != nil {
+		if err := cfg.UpdatePath(path); err != nil {
 			return err
 		}
 		if postExecute != nil {
-			return postExecute(conf)
+			return postExecute(cfg)
 		}
 		return nil
 	})
@@ -144,20 +144,20 @@ func (r Relayer) Start(
 
 func (r Relayer) call(
 	ctx context.Context,
-	conf relayerconf.Config,
-	path relayerconf.Path,
+	cfg config.Config,
+	path config.Path,
 	action string,
 ) (
-	reply relayerconf.Path, err error,
+	reply config.Path, err error,
 ) {
-	srcChain, srcKey, err := r.prepare(ctx, conf, path.Src.ChainID)
+	srcChain, srcKey, err := r.prepare(ctx, cfg, path.Src.ChainID)
 	if err != nil {
-		return relayerconf.Path{}, err
+		return config.Path{}, err
 	}
 
-	dstChain, dstKey, err := r.prepare(ctx, conf, path.Dst.ChainID)
+	dstChain, dstKey, err := r.prepare(ctx, cfg, path.Dst.ChainID)
 	if err != nil {
-		return relayerconf.Path{}, err
+		return config.Path{}, err
 	}
 
 	args := []interface{}{
@@ -170,32 +170,32 @@ func (r Relayer) call(
 	return reply, tsrelayer.Call(ctx, action, args, &reply)
 }
 
-func (r Relayer) prepare(ctx context.Context, conf relayerconf.Config, chainID string) (
-	chain relayerconf.Chain, privKey string, err error,
+func (r Relayer) prepare(ctx context.Context, cfg config.Config, chainID string) (
+	chain config.Chain, privKey string, err error,
 ) {
-	chain, err = conf.ChainByID(chainID)
+	chain, err = cfg.ChainByID(chainID)
 	if err != nil {
-		return relayerconf.Chain{}, "", err
+		return config.Chain{}, "", err
 	}
 
 	coins, err := r.balance(ctx, chain.RPCAddress, chain.Account, chain.AddressPrefix)
 	if err != nil {
-		return relayerconf.Chain{}, "", err
+		return config.Chain{}, "", err
 	}
 
 	gasPrice, err := sdk.ParseCoinNormalized(chain.GasPrice)
 	if err != nil {
-		return relayerconf.Chain{}, "", err
+		return config.Chain{}, "", err
 	}
 
 	account, err := r.ca.GetByName(chain.Account)
 	if err != nil {
-		return relayerconf.Chain{}, "", err
+		return config.Chain{}, "", err
 	}
 
 	addr, err := account.Address(chain.AddressPrefix)
 	if err != nil {
-		return relayerconf.Chain{}, "", err
+		return config.Chain{}, "", err
 	}
 
 	errMissingBalance := fmt.Errorf(`account "%s(%s)" on %q chain does not have enough balances`,
@@ -205,7 +205,7 @@ func (r Relayer) prepare(ctx context.Context, conf relayerconf.Config, chainID s
 	)
 
 	if len(coins) == 0 {
-		return relayerconf.Chain{}, "", errMissingBalance
+		return config.Chain{}, "", errMissingBalance
 	}
 
 	for _, coin := range coins {
@@ -214,7 +214,7 @@ func (r Relayer) prepare(ctx context.Context, conf relayerconf.Config, chainID s
 		}
 
 		if gasPrice.Amount.Int64()*ibcSetupGas > coin.Amount.Int64() {
-			return relayerconf.Chain{}, "", errMissingBalance
+			return config.Chain{}, "", errMissingBalance
 		}
 	}
 
@@ -222,18 +222,18 @@ func (r Relayer) prepare(ctx context.Context, conf relayerconf.Config, chainID s
 	passphrase := ""
 	key, err := r.ca.Export(chain.Account, passphrase)
 	if err != nil {
-		return relayerconf.Chain{}, "", err
+		return config.Chain{}, "", err
 	}
 
 	// Unarmor the key to be able to read it as bytes
 	priv, algo, err := crypto.UnarmorDecryptPrivKey(key, passphrase)
 	if err != nil {
-		return relayerconf.Chain{}, "", err
+		return config.Chain{}, "", err
 	}
 
 	// Check the algorithm because the TS relayer expects a secp256k1 private key
 	if algo != algoSecp256k1 {
-		return relayerconf.Chain{}, "", fmt.Errorf("private key algorithm must be secp256k1 instead of %s", algo)
+		return config.Chain{}, "", fmt.Errorf("private key algorithm must be secp256k1 instead of %s", algo)
 	}
 
 	return chain, hex.EncodeToString(priv.Bytes()), nil
@@ -265,23 +265,23 @@ func (r Relayer) balance(ctx context.Context, rpcAddress, account, addressPrefix
 }
 
 // GetPath returns a path by its id.
-func (r Relayer) GetPath(_ context.Context, id string) (relayerconf.Path, error) {
-	conf, err := relayerconf.Get()
+func (r Relayer) GetPath(_ context.Context, id string) (config.Path, error) {
+	cfg, err := config.Get()
 	if err != nil {
-		return relayerconf.Path{}, err
+		return config.Path{}, err
 	}
 
-	return conf.PathByID(id)
+	return cfg.PathByID(id)
 }
 
 // ListPaths list all the paths.
-func (r Relayer) ListPaths(_ context.Context) ([]relayerconf.Path, error) {
-	conf, err := relayerconf.Get()
+func (r Relayer) ListPaths(_ context.Context) ([]config.Path, error) {
+	cfg, err := config.Get()
 	if err != nil {
 		return nil, err
 	}
 
-	return conf.Paths, nil
+	return cfg.Paths, nil
 }
 
 func fixRPCAddress(rpcAddress string) string {

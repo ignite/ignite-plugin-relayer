@@ -6,12 +6,12 @@ import (
 	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/ignite/cli/v28/ignite/pkg/cosmosaccount"
+	"github.com/ignite/cli/v28/ignite/pkg/cosmosclient"
+	"github.com/ignite/cli/v28/ignite/pkg/cosmosfaucet"
 	"github.com/imdario/mergo"
 
-	"github.com/ignite/cli/ignite/pkg/cosmosaccount"
-	"github.com/ignite/cli/ignite/pkg/cosmosclient"
-	"github.com/ignite/cli/ignite/pkg/cosmosfaucet"
-	relayerconfig "github.com/ignite/cli/ignite/pkg/relayer/config"
+	"github.com/ignite/ignite-plugin-relayer/relayer/config"
 )
 
 const (
@@ -138,8 +138,8 @@ func (c *Chain) TryRetrieve(ctx context.Context) (sdk.Coins, error) {
 	return c.r.balance(ctx, c.rpcAddress, c.accountName, c.addressPrefix)
 }
 
-func (c *Chain) Config() relayerconfig.Chain {
-	return relayerconfig.Chain{
+func (c *Chain) Config() config.Chain {
+	return config.Chain{
 		ID:            c.ID,
 		Account:       c.accountName,
 		AddressPrefix: c.addressPrefix,
@@ -217,7 +217,7 @@ func (c *Chain) Connect(dst *Chain, options ...ChannelOption) (id string, err er
 		apply(&channelOptions)
 	}
 
-	conf, err := relayerconfig.Get()
+	cfg, err := config.Get()
 	if err != nil {
 		return "", err
 	}
@@ -230,7 +230,7 @@ func (c *Chain) Connect(dst *Chain, options ...ChannelOption) (id string, err er
 	i := 2
 	for {
 		guess := pathID + suffix
-		if _, err := conf.PathByID(guess); err != nil { // guess is unique.
+		if _, err := cfg.PathByID(guess); err != nil { // guess is unique.
 			pathID = guess
 			break
 		}
@@ -238,24 +238,24 @@ func (c *Chain) Connect(dst *Chain, options ...ChannelOption) (id string, err er
 		i++
 	}
 
-	confPath := relayerconfig.Path{
+	confPath := config.Path{
 		ID:       pathID,
 		Ordering: channelOptions.ordering,
-		Src: relayerconfig.PathEnd{
+		Src: config.PathEnd{
 			ChainID: c.ID,
 			PortID:  channelOptions.sourcePort,
 			Version: channelOptions.sourceVersion,
 		},
-		Dst: relayerconfig.PathEnd{
+		Dst: config.PathEnd{
 			ChainID: dst.ID,
 			PortID:  channelOptions.targetPort,
 			Version: channelOptions.targetVersion,
 		},
 	}
 
-	conf.Paths = append(conf.Paths, confPath)
+	cfg.Paths = append(cfg.Paths, confPath)
 
-	if err := relayerconfig.Save(conf); err != nil {
+	if err := config.Save(cfg); err != nil {
 		return "", err
 	}
 
@@ -275,20 +275,20 @@ func (c *Chain) EnsureChainSetup(ctx context.Context) error {
 	c.ID = status.NodeInfo.Network
 
 	confChain := c.Config()
-	conf, err := relayerconfig.Get()
+	cfg, err := config.Get()
 	if err != nil {
 		return err
 	}
 
 	var found bool
 
-	for i, chain := range conf.Chains {
+	for i, chain := range cfg.Chains {
 		if chain.ID == c.ID {
 			if chain.RPCAddress != c.rpcAddress {
 				return errEndpointExistsWithDifferentChainID
 			}
 
-			if err := mergo.Merge(&conf.Chains[i], confChain, mergo.WithOverride); err != nil {
+			if err := mergo.Merge(&cfg.Chains[i], confChain, mergo.WithOverride); err != nil {
 				return err
 			}
 
@@ -298,10 +298,10 @@ func (c *Chain) EnsureChainSetup(ctx context.Context) error {
 	}
 
 	if !found {
-		conf.Chains = append(conf.Chains, confChain)
+		cfg.Chains = append(cfg.Chains, confChain)
 	}
 
-	return relayerconfig.Save(conf)
+	return config.Save(cfg)
 }
 
 // PathID creates path name from chain ids.

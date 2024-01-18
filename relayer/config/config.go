@@ -1,13 +1,12 @@
-package relayerconf
+package config
 
 import (
 	"fmt"
 	"os"
 	"reflect"
 
+	"github.com/ignite/cli/v28/ignite/pkg/confile"
 	"github.com/pkg/errors"
-
-	"github.com/ignite/cli/ignite/pkg/confile"
 )
 
 const SupportVersion = "2"
