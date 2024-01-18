@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/ignite/cli/ignite/pkg/cliui"
-	"github.com/ignite/cli/ignite/pkg/cosmosaccount"
+	"github.com/ignite/cli/v28/ignite/pkg/cliui"
+	"github.com/ignite/cli/v28/ignite/pkg/cosmosaccount"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
@@ -13,18 +13,18 @@ const (
 	flagKeyringDir     = "keyring-dir"
 )
 
-// NewRelayer creates a new relayer command that holds some other sub commands
-func NewRelayer() *cobra.Command {
+// NewTS creates a new ts command that holds some other sub
+// commands related to the TS relayer.
+func NewTS() *cobra.Command {
 	c := &cobra.Command{
-		Use:     "relayer [command]",
+		Use:     "ts [command]",
 		Aliases: []string{"n"},
-		Short:   "Connect blockchains with an IBC relayer",
-		Long:    ``,
+		Short:   "Connect blockchains with a TypeScript implementation of an IBC relayer",
 	}
 
 	c.AddCommand(
-		NewRelayerConfigure(),
-		NewRelayerConnect(),
+		NewTSConfigure(),
+		NewTSConnect(),
 	)
 
 	return c
